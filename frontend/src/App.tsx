@@ -1,91 +1,201 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import "./App.css";
 
-type Message = {
+interface Message {
   role: string;
   content: string;
-};
+}
+
+interface ChatSession {
+  id: number;
+  title: string;
+  messages: Message[];
+}
 
 function App() {
-  const [file, setFile] = useState<File | null>(null);
-  const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [question, setQuestion] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSession, setCurrentSession] = useState(0);
 
   useEffect(() => {
-    const saved = localStorage.getItem("chatHistory");
+    const saved = localStorage.getItem("chat_sessions");
+
     if (saved) {
-      setMessages(JSON.parse(saved));
+      const parsed = JSON.parse(saved);
+
+      setSessions(parsed);
+
+      if (parsed.length > 0) {
+        setMessages(parsed[0].messages);
+      }
     }
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("chatHistory", JSON.stringify(messages));
-  }, [messages]);
+  const saveSession = (updatedMessages: Message[]) => {
+    let updatedSessions = [...sessions];
 
-  const uploadFile = async () => {
+    updatedSessions[currentSession] = {
+      id: currentSession,
+      title: `Chat ${currentSession + 1}`,
+      messages: updatedMessages,
+    };
+
+    setSessions(updatedSessions);
+
+    localStorage.setItem(
+      "chat_sessions",
+      JSON.stringify(updatedSessions)
+    );
+  };
+
+  const handleUpload = async () => {
     if (!file) return;
 
     const formData = new FormData();
+
     formData.append("file", file);
 
-    await axios.post("http://127.0.0.1:8000/upload", formData);
+    await fetch("http://127.0.0.1:8000/upload", {
+      method: "POST",
+      body: formData,
+    });
 
-    alert("Document uploaded successfully");
+    alert("File uploaded successfully");
   };
 
   const askQuestion = async () => {
     if (!question) return;
 
-    const userMessage = {
+    const userMessage: Message = {
       role: "user",
       content: question,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
 
-    const response = await axios.post(
-      "http://127.0.0.1:8000/ask",
-      {
-        question: question,
-      }
-    );
+    setMessages(updatedMessages);
 
-    const botMessage = {
+    const response = await fetch("http://127.0.0.1:8000/ask", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question,
+      }),
+    });
+
+    const data = await response.json();
+
+    const assistantMessage: Message = {
       role: "assistant",
-      content: response.data.answer,
+      content: data.answer,
     };
 
-    setMessages((prev) => [...prev, botMessage]);
+    const finalMessages = [
+      ...updatedMessages,
+      assistantMessage,
+    ];
+
+    setMessages(finalMessages);
+
+    saveSession(finalMessages);
 
     setQuestion("");
   };
 
   const clearChat = () => {
     setMessages([]);
-    localStorage.removeItem("chatHistory");
+
+    let updatedSessions = [...sessions];
+
+    updatedSessions[currentSession] = {
+      id: currentSession,
+      title: `Chat ${currentSession + 1}`,
+      messages: [],
+    };
+
+    setSessions(updatedSessions);
+
+    localStorage.setItem(
+      "chat_sessions",
+      JSON.stringify(updatedSessions)
+    );
+  };
+
+  const newChat = () => {
+    const newSessionId = sessions.length;
+
+    const newSession: ChatSession = {
+      id: newSessionId,
+      title: `Chat ${newSessionId + 1}`,
+      messages: [],
+    };
+
+    const updatedSessions = [...sessions, newSession];
+
+    setSessions(updatedSessions);
+
+    localStorage.setItem(
+      "chat_sessions",
+      JSON.stringify(updatedSessions)
+    );
+
+    setCurrentSession(newSessionId);
+
+    setMessages([]);
+  };
+
+  const loadChat = (index: number) => {
+    setCurrentSession(index);
+
+    setMessages(sessions[index].messages);
   };
 
   return (
-    <div className="container">
-      <h1>AI20 Document Q&A</h1>
+    <div className="app-container">
+      <div className="sidebar">
+        <h2>Chat History</h2>
 
-      <div className="upload-section">
-        <input
-          type="file"
-          onChange={(e) =>
-            setFile(e.target.files ? e.target.files[0] : null)
-          }
-        />
+        <button onClick={newChat}>New Chat</button>
 
-        <button onClick={uploadFile}>Upload Document</button>
+        {sessions.map((session, index) => (
+          <div
+            key={index}
+            className="chat-item"
+            onClick={() => loadChat(index)}
+          >
+            {session.title}
+          </div>
+        ))}
       </div>
 
-      <div className="chat-section">
-        <div className="messages">
+      <div className="main-content">
+        <h1>AI20 Document Q&A</h1>
+
+        <input
+          type="file"
+          onChange={(e) => {
+            if (e.target.files) {
+              setFile(e.target.files[0]);
+            }
+          }}
+        />
+
+        <button onClick={handleUpload}>
+          Upload
+        </button>
+
+        <div className="chat-box">
           {messages.map((msg, index) => (
-            <div key={index} className={msg.role}>
-              <strong>{msg.role}:</strong> {msg.content}
+            <div
+              key={index}
+              className={msg.role}
+            >
+              <b>{msg.role}:</b> {msg.content}
             </div>
           ))}
         </div>
@@ -94,13 +204,18 @@ function App() {
           type="text"
           placeholder="Ask a question..."
           value={question}
-          onChange={(e) => setQuestion(e.target.value)}
+          onChange={(e) =>
+            setQuestion(e.target.value)
+          }
         />
 
-        <div className="buttons">
-          <button onClick={askQuestion}>Ask</button>
-          <button onClick={clearChat}>Clear Chat</button>
-        </div>
+        <button onClick={askQuestion}>
+          Ask
+        </button>
+
+        <button onClick={clearChat}>
+          Clear Chat
+        </button>
       </div>
     </div>
   );

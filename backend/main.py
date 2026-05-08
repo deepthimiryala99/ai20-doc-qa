@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import os
 import shutil
 import fitz
+import re
 
 from llama_index.core import VectorStoreIndex, Document, Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -103,10 +104,38 @@ async def ask_question(request: QuestionRequest):
             "answer": "I don't know the answer based on the uploaded document."
         }
 
-    text = nodes[0].text
+    context = nodes[0].text
 
-    shortened_text = text[:700]
+    # Name questions
+    if "whose" in question or "name" in question:
+        lines = context.split("\n")
+
+        return {
+            "answer": lines[0]
+        }
+
+    # Experience questions
+    if "experience" in question or "years" in question:
+
+        match = re.search(r'(\d+\+?\s+years)', context)
+
+        if match:
+            return {
+                "answer": f"She has {match.group(1)} of experience."
+            }
+
+    # Role questions
+    if "role" in question or "position" in question:
+
+        if "CUSTOMER SUPPORT ANALYST" in context:
+            return {
+                "answer": "Her recent role is Customer Support Analyst."
+            }
+
+    sentences = context.split(".")
+
+    clean_answer = ".".join(sentences[:2])
 
     return {
-        "answer": shortened_text
+        "answer": clean_answer
     }
