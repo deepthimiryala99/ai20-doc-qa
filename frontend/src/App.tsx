@@ -58,7 +58,7 @@ function App() {
 
     formData.append("file", file);
 
-    await fetch("http://127.0.0.1:8000/upload", {
+    await fetch("https://ai20-doc-qa.onrender.com/upload", {
       method: "POST",
       body: formData,
     });
@@ -78,7 +78,7 @@ function App() {
 
     setMessages(updatedMessages);
 
-    const response = await fetch("http://127.0.0.1:8000/ask", {
+    const response = await fetch("https://ai20-doc-qa.onrender.com/ask", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
