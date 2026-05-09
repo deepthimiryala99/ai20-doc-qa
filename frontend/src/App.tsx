@@ -16,16 +16,16 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
   const [file, setFile] = useState<File | null>(null);
-
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState(0);
+
+  const API_URL = "https://ai20-doc-qa.onrender.com";
 
   useEffect(() => {
     const saved = localStorage.getItem("chat_sessions");
 
     if (saved) {
       const parsed = JSON.parse(saved);
-
       setSessions(parsed);
 
       if (parsed.length > 0) {
@@ -35,7 +35,7 @@ function App() {
   }, []);
 
   const saveSession = (updatedMessages: Message[]) => {
-    let updatedSessions = [...sessions];
+    const updatedSessions = [...sessions];
 
     updatedSessions[currentSession] = {
       id: currentSession,
@@ -44,26 +44,30 @@ function App() {
     };
 
     setSessions(updatedSessions);
-
-    localStorage.setItem(
-      "chat_sessions",
-      JSON.stringify(updatedSessions)
-    );
+    localStorage.setItem("chat_sessions", JSON.stringify(updatedSessions));
   };
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (!file) {
+      alert("Please select a file first");
+      return;
+    }
 
     const formData = new FormData();
-
     formData.append("file", file);
 
-    await fetch("https://ai20-doc-qa.onrender.com/upload", {
-      method: "POST",
-      body: formData,
-    });
+    try {
+      const response = await fetch(`${API_URL}/upload`, {
+        method: "POST",
+        body: formData,
+      });
 
-    alert("File uploaded successfully");
+      const data = await response.json();
+      alert(data.message);
+    } catch (error) {
+      alert("Upload failed. Please try again.");
+      console.log(error);
+    }
   };
 
   const askQuestion = async () => {
@@ -75,34 +79,39 @@ function App() {
     };
 
     const updatedMessages = [...messages, userMessage];
-
     setMessages(updatedMessages);
 
-    const response = await fetch("https://ai20-doc-qa.onrender.com/ask", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        question,
-      }),
-    });
+    try {
+      const response = await fetch(`${API_URL}/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question,
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    const assistantMessage: Message = {
-      role: "assistant",
-      content: data.answer,
-    };
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: data.answer,
+      };
 
-    const finalMessages = [
-      ...updatedMessages,
-      assistantMessage,
-    ];
+      const finalMessages = [...updatedMessages, assistantMessage];
 
-    setMessages(finalMessages);
+      setMessages(finalMessages);
+      saveSession(finalMessages);
+    } catch (error) {
+      const errorMessage: Message = {
+        role: "assistant",
+        content: "Something went wrong. Please try again.",
+      };
 
-    saveSession(finalMessages);
+      setMessages([...updatedMessages, errorMessage]);
+      console.log(error);
+    }
 
     setQuestion("");
   };
@@ -110,7 +119,7 @@ function App() {
   const clearChat = () => {
     setMessages([]);
 
-    let updatedSessions = [...sessions];
+    const updatedSessions = [...sessions];
 
     updatedSessions[currentSession] = {
       id: currentSession,
@@ -119,11 +128,7 @@ function App() {
     };
 
     setSessions(updatedSessions);
-
-    localStorage.setItem(
-      "chat_sessions",
-      JSON.stringify(updatedSessions)
-    );
+    localStorage.setItem("chat_sessions", JSON.stringify(updatedSessions));
   };
 
   const newChat = () => {
@@ -138,20 +143,13 @@ function App() {
     const updatedSessions = [...sessions, newSession];
 
     setSessions(updatedSessions);
-
-    localStorage.setItem(
-      "chat_sessions",
-      JSON.stringify(updatedSessions)
-    );
-
+    localStorage.setItem("chat_sessions", JSON.stringify(updatedSessions));
     setCurrentSession(newSessionId);
-
     setMessages([]);
   };
 
   const loadChat = (index: number) => {
     setCurrentSession(index);
-
     setMessages(sessions[index].messages);
   };
 
@@ -178,6 +176,7 @@ function App() {
 
         <input
           type="file"
+          accept=".pdf,.txt"
           onChange={(e) => {
             if (e.target.files) {
               setFile(e.target.files[0]);
@@ -185,16 +184,11 @@ function App() {
           }}
         />
 
-        <button onClick={handleUpload}>
-          Upload
-        </button>
+        <button onClick={handleUpload}>Upload</button>
 
         <div className="chat-box">
           {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={msg.role}
-            >
+            <div key={index} className={msg.role}>
               <b>{msg.role}:</b> {msg.content}
             </div>
           ))}
@@ -204,18 +198,11 @@ function App() {
           type="text"
           placeholder="Ask a question..."
           value={question}
-          onChange={(e) =>
-            setQuestion(e.target.value)
-          }
+          onChange={(e) => setQuestion(e.target.value)}
         />
 
-        <button onClick={askQuestion}>
-          Ask
-        </button>
-
-        <button onClick={clearChat}>
-          Clear Chat
-        </button>
+        <button onClick={askQuestion}>Ask</button>
+        <button onClick={clearChat}>Clear Chat</button>
       </div>
     </div>
   );
