@@ -7,7 +7,6 @@ import fitz
 import re
 
 from llama_index.core import VectorStoreIndex, Document, Settings
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 app = FastAPI(title="AI20 Document Q&A Backend")
 
@@ -22,9 +21,7 @@ app.add_middleware(
 UPLOAD_DIR = "storage/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-Settings.embed_model = HuggingFaceEmbedding(
-    model_name="BAAI/bge-small-en-v1.5"
-)
+Settings.llm = None
 
 index = None
 
@@ -40,7 +37,6 @@ def home():
 
 def extract_text_from_pdf(pdf_path):
     text = ""
-
     pdf = fitz.open(pdf_path)
 
     for page in pdf:
@@ -60,20 +56,25 @@ async def upload_document(file: UploadFile = File(...)):
 
     extracted_text = ""
 
-    if file.filename.endswith(".pdf"):
+    if file.filename.lower().endswith(".pdf"):
         extracted_text = extract_text_from_pdf(file_path)
 
-    elif file.filename.endswith(".txt"):
+    elif file.filename.lower().endswith(".txt"):
         with open(file_path, "r", encoding="utf-8") as f:
             extracted_text = f.read()
 
-    documents = [Document(text=extracted_text)]
+    if not extracted_text.strip():
+        return {
+            "message": "Could not extract text from this file.",
+            "filename": file.filename,
+        }
 
+    documents = [Document(text=extracted_text)]
     index = VectorStoreIndex.from_documents(documents)
 
     return {
         "message": "File uploaded and indexed successfully",
-        "filename": file.filename
+        "filename": file.filename,
     }
 
 
@@ -82,60 +83,38 @@ async def ask_question(request: QuestionRequest):
     global index
 
     if index is None:
-        return {
-            "answer": "Please upload a document first."
-        }
+        return {"answer": "Please upload a document first."}
 
     question = request.question.lower().strip()
 
-    unrelated_words = ["hi", "hello", "hey"]
-
-    if question in unrelated_words:
-        return {
-            "answer": "Please ask a question related to the uploaded document."
-        }
+    if question in ["hi", "hello", "hey"]:
+        return {"answer": "Please ask a question related to the uploaded document."}
 
     retriever = index.as_retriever(similarity_top_k=1)
-
     nodes = retriever.retrieve(request.question)
 
     if not nodes:
-        return {
-            "answer": "I don't know the answer based on the uploaded document."
-        }
+        return {"answer": "I don't know the answer based on the uploaded document."}
 
     context = nodes[0].text
 
-    # Name questions
     if "whose" in question or "name" in question:
-        lines = context.split("\n")
+        lines = [line.strip() for line in context.split("\n") if line.strip()]
+        return {"answer": lines[0] if lines else "I don't know based on the document."}
 
-        return {
-            "answer": lines[0]
-        }
-
-    # Experience questions
     if "experience" in question or "years" in question:
-
-        match = re.search(r'(\d+\+?\s+years)', context)
-
+        match = re.search(r"(\d+\+?\s+years)", context, re.IGNORECASE)
         if match:
-            return {
-                "answer": f"She has {match.group(1)} of experience."
-            }
+            return {"answer": f"She has {match.group(1)} of experience."}
 
-    # Role questions
     if "role" in question or "position" in question:
-
-        if "CUSTOMER SUPPORT ANALYST" in context:
-            return {
-                "answer": "Her recent role is Customer Support Analyst."
-            }
+        if "customer support analyst" in context.lower():
+            return {"answer": "Her recent role is Customer Support Analyst."}
 
     sentences = context.split(".")
+    clean_answer = ".".join(sentences[:2]).strip()
 
-    clean_answer = ".".join(sentences[:2])
+    if not clean_answer:
+        clean_answer = "I don't know the answer based on the uploaded document."
 
-    return {
-        "answer": clean_answer
-    }
+    return {"answer": clean_answer}
