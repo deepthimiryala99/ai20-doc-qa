@@ -22,6 +22,7 @@ UPLOAD_DIR = "storage/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 Settings.llm = None
+Settings.embed_model = "local"
 
 index = None
 
